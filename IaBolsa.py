@@ -3,8 +3,8 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import yfinance as yf
 import plotly.graph_objects as go
+import matplotlib.dates as mdates
 import warnings
-import mplfinance as mpf
 warnings.filterwarnings("ignore")
 
 # Fetching data using yfinance directly
@@ -34,20 +34,71 @@ plt.title("Cotação x tempo", fontsize=25)
 plt.show()
 
 # ITUB3 moving averages
-plt.figure(figsize=(16,6))
-plt.plot(prices['Date'], prices['ITUB'].ewm(span=90).mean())
-plt.plot(prices['Date'], prices['ITUB'], alpha=0.8)
-plt.plot(prices['Date'], prices['ITUB'].ewm(span=365).mean())
-plt.grid()
-plt.title('Cotações diárias e médias móveis de ITUB3', fontsize=15)
-plt.legend(['Média móvel trimestral', 'Cotação diária', 'Média móvel anual'])
+#plt.figure(figsize=(16,6))
+#plt.plot(prices['Date'], prices['ITUB'].ewm(span=90).mean())
+#plt.plot(prices['Date'], prices['ITUB'], alpha=0.8)
+#plt.plot(prices['Date'], prices['ITUB'].ewm(span=365).mean())
+#plt.grid()
+#plt.title('Cotações diárias e médias móveis de ITUB3', fontsize=15)
+#plt.legend(['Média móvel trimestral', 'Cotação diária', 'Média móvel anual'])
+#plt.show()
+
+#2)Dados de candlestick itub3
+# Baixar os dados
+itub = pd.DataFrame()
+itub = yf.download('ITUB3.SA', start='2024-03-01')
+itub.index = pd.to_datetime(itub.index)
+
+# Renaming columns to simpler names
+itub.columns = ['Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
+
+# Converting index to datetime
+itub.index = pd.to_datetime(itub.index)
+
+# Creating DateNum column
+itub['DateNum'] = mdates.date2num(itub.index)
+
+# Criando uma figura
+plt.figure(figsize = (16, 10))
+
+# Definir espessura do candle e da sombra
+esp_candle = .7
+esp_sombra = .1
+
+# Filtrar candles de alta e de baixa
+alta = itub[itub['Close'] >= itub['Open']]
+baixa = itub[itub['Close'] < itub['Open']]
+
+# Escolher cores
+cor_alta = 'green'
+cor_baixa = 'red'
+
+# Plotar candles de alta
+plt.bar(alta['DateNum'], alta['Close'] - alta['Open'], esp_candle, bottom=alta['Open'], color=cor_alta)
+plt.bar(alta['DateNum'], alta['High'] - alta['Close'], esp_sombra, bottom=alta['Close'], color=cor_alta)
+plt.bar(alta['DateNum'], alta['Low'] - alta['Open'], esp_sombra, bottom=alta['Open'], color=cor_alta)
+
+# Plotar candles de baixa
+plt.bar(baixa['DateNum'], baixa['Close'] - baixa['Open'], esp_candle, bottom=baixa['Open'], color=cor_baixa)
+plt.bar(baixa['DateNum'], baixa['High'] - baixa['Open'], esp_sombra, bottom=baixa['Open'], color=cor_baixa)
+plt.bar(baixa['DateNum'], baixa['Low'] - baixa['Close'], esp_sombra, bottom=baixa['Close'], color=cor_baixa)
+
+# Adicionar Médias Móveis
+itub['Close'].rolling(window=7).mean().plot(label='MMS = 7')
+itub['Close'].ewm(span=7).mean().plot(label='MME = 7')
+
+# Ajustar os eixos de data
+plt.gca().xaxis_date()
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+
+plt.legend()
 plt.show()
 
 # Correlation heatmap
 sns.heatmap(prices.corr(), annot=True)
 plt.show()
 
-# 2) Retorno diário
+# 3) Retorno diário
 returns = pd.DataFrame()
 for i in tickers:
     returns[i] = prices[i].pct_change()
@@ -61,7 +112,7 @@ returns.describe()
 # Distribution plot for IBOV returns
 sns.distplot(returns['IBOV'].dropna())
 
-# 3) Retorno acumulado matplotlib 
+# 4) Retorno acumulado matplotlib 
 return_sum = pd.DataFrame()
 for ticker in tickers:
     return_sum[ticker] = (returns[ticker] + 1).cumprod()
