@@ -1,126 +1,103 @@
 import pandas as pd
-from matplotlib import pyplot as plt
-import seaborn as sns
 import yfinance as yf
+import plotly.express as px
 import plotly.graph_objects as go
-import matplotlib.dates as mdates
-import warnings
-warnings.filterwarnings("ignore")
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.linear_model import Ridge
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-# Fetching data using yfinance directly
-prices = pd.DataFrame()
+# Classe para baixar e organizar os dados de ações
+class StockData:
+    def __init__(self, tickers, start_date='2016-01-01'):
+        self.tickers = tickers
+        self.start_date = start_date
+        self.prices = None
+        self.volume = None
+        self.data = None
+        self._download_data()
+        self._clean_data()
+        self._plot_candlestick()
+        self._plot_correlation()
+        self._plot_stocks_vs_ibov()
+    
+    def _download_data(self):
+        """Baixa os dados das ações do Yahoo Finance."""
+        print("Baixando os dados das ações...")
+        self.data = yf.download(self.tickers, start=self.start_date)
+        self.prices = self.data['Close'].copy()
+        self.volume = self.data['Volume'].copy()
+        self._rename_columns()
+    
+    def _rename_columns(self):
+        """Renomeia as colunas para facilitar o uso."""
+        rename_dict = {'ITUB3.SA': 'ITUB', 'BBDC3.SA': 'BBDC', 'BBAS3.SA': 'BBAS', 'SANB3.SA': 'SANB', '^BVSP': 'IBOV'}
+        self.prices.rename(columns=rename_dict, inplace=True)
+        self.volume.rename(columns=rename_dict, inplace=True)
+    
+    def _clean_data(self):
+        """Realiza o tratamento dos dados, preenchendo valores ausentes e ajustando a escala."""
+        print("Limpando os dados...")
+        self.prices.loc[:, 'IBOV'] /= 1000  # Ajusta a escala do índice IBOV
+        self.volume.loc[:, 'IBOV'] /= 1000
+        self.prices.reset_index(inplace=True)
+        self.volume.reset_index(inplace=True)
+        self.prices.ffill(inplace=True)  # Preenchimento de valores ausentes
+        self.volume.ffill(inplace=True)
+    
+    def get_stock(self, name):
+        """Retorna um DataFrame com os preços e volume da ação selecionada."""
+        df = pd.DataFrame({'Date': self.prices['Date'],
+                           'Close': self.prices[name],
+                           'Volume': self.volume[name]})
+        df['MA_5'] = df['Close'].rolling(window=5).mean()
+        df['MA_10'] = df['Close'].rolling(window=10).mean()
+        return df.dropna()
+    
+    def _plot_candlestick(self):
+        """Plota gráfico de velas (Candlestick) para visualizar a cotação ao longo do tempo."""
+        fig = go.Figure()
+        for ticker in self.tickers:
+            if ticker in self.data.columns.levels[1]:
+                df = self.data.xs(ticker, level=1, axis=1)
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df['Open'],
+                    high=df['High'],
+                    low=df['Low'],
+                    close=df['Close'],
+                    name=f'Candlestick {ticker}')
+                )
+        fig.update_layout(title='Cotação por Tempo - Candlestick',
+                          xaxis_title='Data',
+                          yaxis_title='Preço',
+                          xaxis_rangeslider_visible=False)
+        fig.show()
+    
+    def _plot_correlation(self):
+        """Plota um heatmap de correlação entre as ações e o IBOV."""
+        correlation_matrix = self.prices.corr()
+        plt.figure(figsize=(10,6))
+        sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', linewidths=0.5)
+        plt.title('Correlação entre ações e IBOV')
+        plt.show()
+    
+    def _plot_stocks_vs_ibov(self):
+        """Plota a evolução das ações e do IBOV no mesmo gráfico."""
+        fig = px.line(self.prices, x=self.prices.index, y=self.prices.columns, 
+                      labels={'value': 'Preço', 'index': 'Data'},
+                      title='Evolução das Ações vs IBOV')
+        fig.update_layout(hovermode='x unified')
+        fig.show()
+
+# Definição dos tickers
 tickers = ['ITUB3.SA', 'BBDC3.SA', 'BBAS3.SA', 'SANB3.SA', '^BVSP']
 
-for ticker in tickers:
-    prices[ticker] = yf.download(ticker, start='2016-01-01')['Adj Close']
-prices.head()
-
-# Renaming columns for readability
-prices.rename(columns={'ITUB3.SA':'ITUB', 'BBDC3.SA':'BBDC', 'BBAS3.SA':'BBAS', 'SANB3.SA':'SANB', '^BVSP':'IBOV'}, inplace=True)
-prices['IBOV'] = prices['IBOV'] / 1000  # Scale IBOV index
-prices.reset_index(inplace=True)
-prices.dropna(subset=['IBOV'], inplace=True)
-prices.IBOV.isnull().sum()
-
-# 1) Cotação x tempo    
-tickers = list(prices.drop(['Date'], axis=1).columns)
-plt.figure(figsize=(16,6))
-
-for i in tickers:
-    plt.plot(prices['Date'], prices[i])
-plt.legend(tickers)
-plt.grid()
-plt.title("Cotação x tempo", fontsize=25)
-plt.show()
-
-# ITUB3 moving averages
-#plt.figure(figsize=(16,6))
-#plt.plot(prices['Date'], prices['ITUB'].ewm(span=90).mean())
-#plt.plot(prices['Date'], prices['ITUB'], alpha=0.8)
-#plt.plot(prices['Date'], prices['ITUB'].ewm(span=365).mean())
-#plt.grid()
-#plt.title('Cotações diárias e médias móveis de ITUB3', fontsize=15)
-#plt.legend(['Média móvel trimestral', 'Cotação diária', 'Média móvel anual'])
-#plt.show()
-
-#2)Dados de candlestick itub3
-# Baixar os dados
-itub = pd.DataFrame()
-itub = yf.download('ITUB3.SA', start='2024-03-01')
-itub.index = pd.to_datetime(itub.index)
-
-# Renaming columns to simpler names
-itub.columns = ['Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
-
-# Converting index to datetime
-itub.index = pd.to_datetime(itub.index)
-
-# Creating DateNum column
-itub['DateNum'] = mdates.date2num(itub.index)
-
-# Criando uma figura
-plt.figure(figsize = (16, 10))
-
-# Definir espessura do candle e da sombra
-esp_candle = .7
-esp_sombra = .1
-
-# Filtrar candles de alta e de baixa
-alta = itub[itub['Close'] >= itub['Open']]
-baixa = itub[itub['Close'] < itub['Open']]
-
-# Escolher cores
-cor_alta = 'green'
-cor_baixa = 'red'
-
-# Plotar candles de alta
-plt.bar(alta['DateNum'], alta['Close'] - alta['Open'], esp_candle, bottom=alta['Open'], color=cor_alta)
-plt.bar(alta['DateNum'], alta['High'] - alta['Close'], esp_sombra, bottom=alta['Close'], color=cor_alta)
-plt.bar(alta['DateNum'], alta['Low'] - alta['Open'], esp_sombra, bottom=alta['Open'], color=cor_alta)
-
-# Plotar candles de baixa
-plt.bar(baixa['DateNum'], baixa['Close'] - baixa['Open'], esp_candle, bottom=baixa['Open'], color=cor_baixa)
-plt.bar(baixa['DateNum'], baixa['High'] - baixa['Open'], esp_sombra, bottom=baixa['Open'], color=cor_baixa)
-plt.bar(baixa['DateNum'], baixa['Low'] - baixa['Close'], esp_sombra, bottom=baixa['Close'], color=cor_baixa)
-
-# Adicionar Médias Móveis
-itub['Close'].rolling(window=7).mean().plot(label='MMS = 7')
-itub['Close'].ewm(span=7).mean().plot(label='MME = 7')
-
-# Ajustar os eixos de data
-plt.gca().xaxis_date()
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-
-plt.legend()
-plt.show()
-
-# Correlation heatmap
-sns.heatmap(prices.corr(), annot=True)
-plt.show()
-
-# 3) Retorno diário
-returns = pd.DataFrame()
-for i in tickers:
-    returns[i] = prices[i].pct_change()
-returns['Date'] = prices['Date']
-
-sns.pairplot(returns)
-plt.show()
-
-returns.describe()
-
-# Distribution plot for IBOV returns
-sns.distplot(returns['IBOV'].dropna())
-
-# 4) Retorno acumulado matplotlib 
-return_sum = pd.DataFrame()
-for ticker in tickers:
-    return_sum[ticker] = (returns[ticker] + 1).cumprod()
-return_sum['Date'] = returns['Date']
-
-plt.figure(figsize=(16,6))
-plt.plot(return_sum['Date'], return_sum.drop(['Date'], axis=1), alpha=0.9)
-plt.legend(tickers)
-plt.title("Retorno x tempo", fontsize=15)
-plt.grid()
-plt.show()
+# Inicializando classes
+data_handler = StockData(tickers)
+price_volume_df = data_handler.get_stock('ITUB')
