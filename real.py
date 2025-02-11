@@ -142,3 +142,34 @@ def interactive_plot(data, title, y_columns):
 
 interactive_plot(df_predicted, 'Original Price vs. LSTM Predictions', ['Close', 'Prediction'])
 interactive_plot(df_predicted, 'Original Price vs. Ridge Regression Predictions', ['Close', 'Ridge Prediction'])
+
+
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+# Preparação dos dados para ARIMAX
+print("Treinando modelo ARIMAX...")
+price_series = target_df.set_index('Date')['Close']
+price_series.index = pd.to_datetime(price_series.index)  # Garantindo que o índice é datetime
+train_size = int(len(price_series) * 0.7)
+train, test = price_series[:train_size], price_series[train_size:]
+
+target_df['Date'] = pd.to_datetime(target_df['Date'])  # Convertendo para datetime
+exog_data = target_df.set_index('Date')[['Volume', 'MA_5', 'MA_10']]
+
+# Garantindo que os índices de exog_data estão alinhados com train e test
+exog_train = exog_data.loc[train.index]
+exog_test = exog_data.loc[test.index]
+
+# Treinando o modelo ARIMAX
+arimax_model = SARIMAX(train, order=(5,1,0), exog=exog_train)
+arimax_model_fit = arimax_model.fit()
+y_pred_arimax = arimax_model_fit.forecast(steps=len(test), exog=exog_test)
+
+# Calculando erro do ARIMAX
+arimax_mae = mean_absolute_error(test, y_pred_arimax)
+print(f'ARIMAX Model MAE: {arimax_mae}')
+
+df_predicted['ARIMAX Prediction'] = y_pred_arimax.values
+
+# Plotando previsões do modelo ARIMAX
+interactive_plot(df_predicted, 'Original Price vs. ARIMAX Predictions', ['Close', 'ARIMAX Prediction'])
