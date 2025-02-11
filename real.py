@@ -11,7 +11,7 @@ from sklearn.linear_model import Ridge
 
 # Classe para baixar e organizar os dados de ações
 class StockData:
-    def __init__(self, tickers, start_date='2016-01-01'):
+    def __init__(self, tickers, start_date='2019-01-01'):
         self.tickers = tickers
         self.start_date = start_date
         self.prices = None
@@ -27,7 +27,7 @@ class StockData:
         self._rename_columns()
     
     def _rename_columns(self):
-        rename_dict = {'ITUB3.SA': 'ITUB', 'BBDC3.SA': 'BBDC', 'BBAS3.SA': 'BBAS', 'SANB3.SA': 'SANB', '^BVSP': 'IBOV'}
+        rename_dict = {'ITUB3.SA': 'ITUB', 'BBDC3.SA': 'BBDC', 'VBBR3.SA': 'VBBR', 'SANB3.SA': 'SANB', '^BVSP': 'IBOV'}
         self.prices.rename(columns=rename_dict, inplace=True)
         self.volume.rename(columns=rename_dict, inplace=True)
     
@@ -70,11 +70,11 @@ class Preprocessor:
         return train_test_split(X, y, test_size=0.3, shuffle=False)
 
 # Definição dos tickers
-tickers = ['ITUB3.SA', 'BBDC3.SA', 'BBAS3.SA', 'SANB3.SA', '^BVSP']
+tickers = ['ITUB3.SA', 'BBDC3.SA', 'VBBR3.SA', 'SANB3.SA', '^BVSP']
 
 # Inicializando classes
 data_handler = StockData(tickers)
-price_volume_df = data_handler.get_stock('BBAS')
+price_volume_df = data_handler.get_stock('VBBR')
 
 # Pré-processamento
 target_df = Preprocessor.trading_window(price_volume_df)
